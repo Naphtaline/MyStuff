@@ -1,7 +1,5 @@
-#%%
-#import psutil
-import random
-import threading
+from psutil import cpu_count
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 
 from utilitary import get_value_between_marker
@@ -12,22 +10,24 @@ from utilitary import retreive_info_from_page
 # TODO take url as parameters
 
 debug = True
-read_articles = 0
 
-author_set_lock = lock()
+author_set_lock = Lock()
 author_set = set()
 
 if debug == False:
     print('Begin program')
 
+# gather_author_name_from_article
+# args :
+#       article_url : must be string
 def gather_author_name_from_article(article_url):
     author_name = retreive_info_from_page(article_url,
                                           '<p class=\'author\'>',
                                           '<',
                                           1)
     for author in author_name:
-        if debug == True:
-            print(author)
+#        if debug == True:
+#            print(author)
         author_set_lock.acquire()
         author_set.add(author)
         author_set_lock.release()
@@ -37,9 +37,10 @@ def main():
         print('Enter Function : main')
 
 # we get the number of cpus ...
-    #cpu_number = psutil.cpu_count(logical=True)
+    cpu_number = cpu_count(logical=True)
+    print(str(cpu_number) + ' cpu found !')
 # then we init the thread pool regarding that number
-    executor = ThreadPoolExecutor(5)
+    executor = ThreadPoolExecutor(cpu_number)
 
 # retrieve the main page to scrap info out of
     result = 0
@@ -51,11 +52,16 @@ def main():
     total_articles = len(article_links)
     print(str(total_articles) + ' articles found.')
 
+    # here we feed the threadpool with all the articles
     for link in article_links:
         executor.submit(gather_author_name_from_article, (link))
-    return
+    # we then shutdown the threadpool with wait=True arg to make
+    # sure that all articles have been treated and are done
+    executor.shutdown(True)
 
-    while True:
-        if ()
+    print('show set :')
+    for author in author_set:
+        print(author)
+
 
 main()

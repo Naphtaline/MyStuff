@@ -2,6 +2,13 @@ import urllib.request
 
 debug = False
 
+# get_value_between_marker
+#   Will return a string containing the value (if markers are present) between
+#   first_marker and second_marker.
+# args :
+#       str             : must be string
+#       first_marker    : must be string
+#       first_marker    : must be string
 def get_value_between_marker(str, first_marker, second_marker):
     index = str.find(first_marker)
     return_value = ""
@@ -9,7 +16,8 @@ def get_value_between_marker(str, first_marker, second_marker):
     if index >= 0:
         index = index + len(first_marker)
         while True:
-            # the "or" condition is here to prevent infite loop. We never know
+            # the "or" condition is here to prevent infite loop.
+            # We never know
             if str[index] == second_marker or index > 100000 : 
                 break;
             else:
@@ -17,6 +25,11 @@ def get_value_between_marker(str, first_marker, second_marker):
             index += 1
     return return_value
 
+# download_at_url
+#   Will return a byte array containing the value dowloaded from "url" arg
+#   address.
+# args :
+#       url             : must be string
 def download_at_url(url):
     if debug == True:
         print('Enter Function : downloadAtUrl')
@@ -25,7 +38,24 @@ def download_at_url(url):
     response = urllib.request.urlopen(url)
     return response
 
-def retreive_info_from_page(url, first_marker, second_marker, match_amount = 0):
+# retreive_info_from_page
+#       Will return a set (so no duplicates) containing string of all values that
+#   are contains between "first_marker" and "second_marker" in a downloaded
+#   page specified by "url" address.
+#       "match_amount" is an optionnal arg (defaut value 0 used as infinite here)
+#   can be used to limit the amount of result we want. (thus possibly saving
+#   performance by not over evaluating the downloaded resource)
+# args :
+#       url             : must be string
+#       first_marker    : must be string
+#       second_marker   : must be string
+#       match_amount    : (optionnal) must be int
+def retreive_info_from_page(url, first_marker,
+                            second_marker, match_amount = 0):
+    if debug == True:
+        print('Enter Function : retreive_info_from_page')
+        print('---------- Url :' + url)
+
     downloaded = download_at_url(url)
     set_to_return = set()
     counter = 0
