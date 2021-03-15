@@ -107,13 +107,16 @@ def handle_title_words(result_dict):
         print('Enter Function : handle_title_words')
     
     word_to_remove = set()
+
     for value in title_set:
         value = value.lower()
         value_split = value.split(' ')
+
         for word in value_split:
             if word in result_dict:
                 result_dict[word] = result_dict[word] + 1
                 if result_dict[word] >= 3:
+                    # word count >= 3, we remove it from word_to_remove
                     word_to_remove.discard(word)
             elif len(word) > 1 or word.isalpha():
                 result_dict[word] = 1
@@ -124,16 +127,20 @@ def handle_title_words(result_dict):
     for word in word_to_remove:
         del result_dict[word]
 
+
 def main():
     if debug == True:
         print('Enter Function : main')
 
+    # get all data requiered from internet
     name_set = retrieve_data_to_process()
     
+    # handle the author data
     result_name_set = set()
     for author in author_set:
         add_name_variations(author, result_name_set)
     
+    # handle the title data
     result_dict = dict()
     handle_title_words(result_dict)
 

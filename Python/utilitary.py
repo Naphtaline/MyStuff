@@ -19,8 +19,6 @@ def get_value_between_marker(string, first_marker, second_marker):
         if index_first < index_second:
             index_first = index_first + len(first_marker)
             while index_first < index_second:
-                # the "or" condition is here to prevent infite loop.
-                # We never know
                 return_value = return_value + string[index_first]
                 index_first += 1
     return return_value
