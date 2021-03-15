@@ -3,21 +3,37 @@
 import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
 from utilitary import get_value_between_marker
 from utilitary import download_at_url
 from utilitary import retreive_info_from_page
 
 
 # TODO take url as parameters
-# TODO multithread things Ncpu = psutil.cpu_count(logical=True)
-debug = True
 
-if debug == True:
+debug = True
+read_articles = 0
+
+author_set_lock = lock()
+author_set = set()
+
+if debug == False:
     print('Begin program')
+
+def gather_author_name_from_article(article_url):
+    author_name = retreive_info_from_page(article_url,
+                                          '<p class=\'author\'>',
+                                          '<',
+                                          1)
+    for author in author_name:
+        if debug == True:
+            print(author)
+        author_set_lock.acquire()
+        author_set.add(author)
+        author_set_lock.release()
 
 def main():
     if debug == True:
-        random.seed()
         print('Enter Function : main')
 
 # we get the number of cpus ...
@@ -27,31 +43,19 @@ def main():
 
 # retrieve the main page to scrap info out of
     result = 0
-    #autor_list_lock =
+    total_articles = 0
+
     article_links = retreive_info_from_page('https://www.digitemis.com/blog',
                             '<a class="card-post" href="',
                             '"', 5)
-    print('articles found : ' + str(len(article_links)))
-   # for link in article_links
-   #    executor.submit(retreive_info_from_page
-    return
-    while True:
-        line = downloaded.readline()
-        if debug == True and result > 10:
-            break
-        if line:
-            match = get_value_between_marker(line.decode("utf-8"), 
-                                             '<a class="card-post" href="',
-                                             '"')
-            if match != "":
-                result += 1
-                executor.submit(retreive_info_from_page, match)
-        else:
-            break
-    if debug == True:
-        print('match for articles = ' + str(result))
+    total_articles = len(article_links)
+    print(str(total_articles) + ' articles found.')
 
+    for link in article_links:
+        executor.submit(gather_author_name_from_article, (link))
+    return
+
+    while True:
+        if ()
 
 main()
-
-

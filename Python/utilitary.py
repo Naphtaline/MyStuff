@@ -1,6 +1,6 @@
 import urllib.request
 
-debug = True
+debug = False
 
 def get_value_between_marker(str, first_marker, second_marker):
     index = str.find(first_marker)
@@ -24,9 +24,6 @@ def download_at_url(url):
 
     response = urllib.request.urlopen(url)
     return response
-          #  match = get_value_between_marker(line.decode("utf-8"), 
-           #                                  '<p class=\'author\'>',
-            #                                 '<')
 
 def retreive_info_from_page(url, first_marker, second_marker, match_amount = 0):
     downloaded = download_at_url(url)
