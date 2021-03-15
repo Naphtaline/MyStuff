@@ -1,4 +1,5 @@
 import urllib.request
+import unidecode
 
 debug = False
 
@@ -9,20 +10,19 @@ debug = False
 #       str             : must be string
 #       first_marker    : must be string
 #       first_marker    : must be string
-def get_value_between_marker(str, first_marker, second_marker):
-    index = str.find(first_marker)
+def get_value_between_marker(string, first_marker, second_marker):
     return_value = ""
-    
-    if index >= 0:
-        index = index + len(first_marker)
-        while True:
-            # the "or" condition is here to prevent infite loop.
-            # We never know
-            if str[index] == second_marker or index > 100000 : 
-                break;
-            else:
-                return_value = return_value + str[index]
-            index += 1
+    index_first = string.find(first_marker)
+    index_second = string.find(second_marker)
+
+    if index_first >= 0 and index_second > 0:
+        if index_first < index_second:
+            index_first = index_first + len(first_marker)
+            while index_first < index_second:
+                # the "or" condition is here to prevent infite loop.
+                # We never know
+                return_value = return_value + string[index_first]
+                index_first += 1
     return return_value
 
 # download_at_url
@@ -39,10 +39,11 @@ def download_at_url(url):
     return response
 
 # retreive_info_from_page
-#       Will return a set (so no duplicates) containing string of all values that
+#   Will return a set (so no duplicates) containing string of all values that
 #   are contains between "first_marker" and "second_marker" in a downloaded
 #   page specified by "url" address.
-#       "match_amount" is an optionnal arg (defaut value 0 used as infinite here)
+#   
+#   "match_amount" is an optionnal arg (defaut value 0 used as infinite here)
 #   can be used to limit the amount of result we want. (thus possibly saving
 #   performance by not over evaluating the downloaded resource)
 # args :
@@ -66,14 +67,15 @@ def retreive_info_from_page(url, first_marker,
                                              first_marker,
                                              second_marker)
             if match != "":
+                # convert utf-8 to non-extended ascii text
+                match = unidecode.unidecode(match)
                 set_to_return.add(match)
                 if match_amount > 0:
                     counter += 1
-                if debug == True:
-                    print(match)
             if match_amount > 0 and counter >= match_amount:
                 break
         else :
             break
+
     return set_to_return
 
