@@ -77,3 +77,27 @@ def retreive_info_from_page(url, first_marker,
 
     return set_to_return
 
+# add_name_variations
+#   This function will add all the variants requiered from "name" to the
+#   "result_name_set_ref" set
+# args :
+#       name                : must be a string
+#       result_name_set_ref : must be a set
+def add_name_variations(name, result_name_set_ref):
+    if debug == True:
+        print('Enter Function : add_name_variations')
+
+    name = name.lower()
+    name_split = name.split(' ', 1)
+    if len(name_split) < 2:
+        return
+    first_name = name_split[0]
+    last_name = name_split[1]
+
+    result_name_set_ref.add(last_name + '.' + first_name)
+    result_name_set_ref.add(first_name + '.' + last_name)
+    result_name_set_ref.add(str(first_name[0]) + '.' + last_name)
+    result_name_set_ref.add(str(first_name[0]) + '_' + last_name)
+    result_name_set_ref.add(last_name + '_' + str(first_name[0]))
+    result_name_set_ref.add(first_name + '_' + last_name)
+    result_name_set_ref.add(last_name + '_' + first_name)
