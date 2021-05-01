@@ -27,12 +27,12 @@ int8_t m_State = DISCONNECTED;
 WiFiServer m_WebServ(80);
 
 Adafruit_BMP3XX bmp;
-#define SEA_LEVEL_PRESSURE_HPA (1013.25f)
+#define SEA_LEVEL_PRESSURE_HPA (1015.0f)
 
 float g_temperature = 0.0f;
-float g_pressure = 0.0f;
+float g_current_pressure = 0.0f;
 float g_altitude = 0.0f;
-float g_current_pressure_value = SEA_LEVEL_PRESSURE_HPA;
+float g_pressure_reference = SEA_LEVEL_PRESSURE_HPA;
 
 #define FEET_IN_METER (0.3048f)
 #define FEET_BY_HPA (30)
@@ -43,6 +43,7 @@ void setup()
 
   while (!Serial);
   Serial.println("Adafruit BMP388 / BMP390 test");
+  Serial.println("Starting up");
 
   if (!bmp.begin_I2C())
   {   // hardware I2C mode, can pass in address & alt Wire
@@ -151,7 +152,7 @@ void loop()
       SoftAP_HandleWebClient();
       break;
   }
-  //DoVerticalScrool(N_image, 24, 25);
+
   ReadAndComputeData();
   PrintDataOnScreen();
   delay(1000);
@@ -176,23 +177,26 @@ void SetupVerticalScroll()
 
 void PrintDataOnScreen()
 {
-  // Température en Celcius - Temperature in Celcius
-  display.println("Temp:");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+
   display.print(g_temperature, 1);
   display.println(" C");
 
-  display.println("QNE:");
-  display.print(g_pressure / 100.0, 1);
+  display.println();
+  display.print(g_current_pressure, 1);
   display.println(" hpa");
 
-  Serial.print("Temperature = ");
-  Serial.print(g_temperature);
-  Serial.println(" *C");
-  
-  Serial.print("Pressure = ");
-  Serial.print(g_pressure / 100.0);
-  Serial.println(" hPa");
-  
+  display.println();
+  display.print(g_altitude);
+  display.println("m");
+
+  Serial.println("alt: ");
+  Serial.print(g_altitude);
+  Serial.print(" m");
+
   display.display();
 }
 
@@ -204,15 +208,12 @@ void ReadAndComputeData()
     return;
   }
   g_temperature = bmp.temperature;
-  g_pressure = bmp.pressure;
-  g_altitude = 
-
-  
-  // Efface l'écran et positionne le curseur dans le coin supérieur gauche - clear display and set cursor on the top left corner
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
+  g_current_pressure = bmp.pressure / 100.0, 1;
+  Serial.println();
+  Serial.println(g_pressure_reference);
+  Serial.println(g_current_pressure);
+  Serial.println();
+  g_altitude = (g_pressure_reference - g_current_pressure) * FEET_BY_HPA * FEET_IN_METER;
 }
 
 void DoVerticalScrool(const uint8_t *bitmap, uint8_t w, uint8_t h)
