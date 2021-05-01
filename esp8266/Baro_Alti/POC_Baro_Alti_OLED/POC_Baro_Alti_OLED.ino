@@ -5,40 +5,18 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include "Adafruit_SSD1306.h" // this lib has been modified to support 64x48 display
+#include <Adafruit_Sensor.h>
+#include "Adafruit_BMP3XX.h"
 
-// SCL GPIO5
-// SDA GPIO4
+#define NUMFLAKES 1
+#define XPOS 0
+#define YPOS 1
+#define DELTAY 2
+
+uint8_t icons[NUMFLAKES][3];
+
 #define OLED_RESET 0  // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
-
-// 24 x 25
-const unsigned char N_image [] = {
-B00001100, B00110000, B00000000,
-B00001100, B00110000, B00000000,
-B00110011, B00111100, B00000000,
-B00110011, B00111100, B00000000,
-B11000000, B11110011, B00000000,
-B11000000, B11110011, B00000000,
-B11000000, B00110000, B11000000,
-B11000000, B00110000, B11000000,
-B11000000, B00000000, B11000000,
-B11000011, B00000000, B11000000,
-B11000011, B00000000, B11000000,
-B11000011, B11000000, B11000000,
-B11000011, B11000000, B11000000,
-B11000011, B00110000, B11000000,
-B11000011, B00110000, B11000000,
-B11000011, B00110000, B11000000,
-B11000011, B00110000, B11000000,
-B11000011, B00110000, B11000000,
-B11000011, B00110000, B11000000,
-B00110011, B00110011, B00000000,
-B00110011, B00110011, B00000000,
-B00001111, B00111100, B00000000,
-B00001111, B00111100, B00000000,
-B00000011, B00110000, B00000000,
-B00000011, B00110000, B00000000
-};
 
 #if (SSD1306_LCDHEIGHT != 48)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
@@ -48,18 +26,16 @@ enum e_State { DISCONNECTED = -1, SOFT_AP = 0, RESETING};
 int8_t m_State = DISCONNECTED;
 WiFiServer m_WebServ(80);
 
-String m_SSID = "";
-String m_Pass = "";
-
-#include <Wire.h>
-#include <SPI.h>
-#include <Adafruit_Sensor.h>
-#include "Adafruit_BMP3XX.h"
-
-
-#define SEALEVELPRESSURE_HPA (1005)
-
 Adafruit_BMP3XX bmp;
+#define SEA_LEVEL_PRESSURE_HPA (1013.25f)
+
+float g_temperature = 0.0f;
+float g_pressure = 0.0f;
+float g_altitude = 0.0f;
+float g_current_pressure_value = SEA_LEVEL_PRESSURE_HPA;
+
+#define FEET_IN_METER (0.3048f)
+#define FEET_BY_HPA (30)
 
 void setup()
 {
@@ -68,7 +44,8 @@ void setup()
   while (!Serial);
   Serial.println("Adafruit BMP388 / BMP390 test");
 
-  if (!bmp.begin_I2C()) {   // hardware I2C mode, can pass in address & alt Wire
+  if (!bmp.begin_I2C())
+  {   // hardware I2C mode, can pass in address & alt Wire
     Serial.println("Could not find a valid BMP3 sensor, check wiring!");
     while (1);
   }
@@ -83,7 +60,6 @@ void setup()
   display.display();
   display.clearDisplay();
   SetupVerticalScroll();
-
 }
 
 void StartWebServer()
@@ -153,27 +129,7 @@ void SoftAP_HandleWebClient()
 
   Serial.print("Request====>");
   Serial.println(l_ReqCopy);
-  if (strncmp(l_ReqCopy, "GET /?ssid=", 11) == 0)
-  {
-    // get ssid
-    char *l_SsidPtr = l_ReqCopy;
-    while (*l_SsidPtr != '=')
-      l_SsidPtr++;
-    m_SSID = strtok(l_SsidPtr, "&") + 1;
 
-    // get Password
-    char *l_PassPtr = l_SsidPtr + 1;
-    while (*l_PassPtr != '=')
-      l_PassPtr++;
-    m_Pass = strtok(l_PassPtr, " ") + 1;
-
-    Serial.print("ssid====>");
-    Serial.println(m_SSID);
-    Serial.print("pass====>");
-    Serial.println(m_Pass);
-    free(l_ReqCopy);
-    // then try connect to given wifi, if successful switch to a new mode and do the thing you're suppose to do
-  }
   l_Client.flush();
 }
 
@@ -183,8 +139,6 @@ void Reset()
   Serial.println("RESETING");
   m_WebServ.stop();
   WiFi.disconnect(true);
-  m_SSID = "";
-  m_Pass = "";
   m_State = DISCONNECTED;
   Serial.println("DISCONNECTED FROM EVERYWHERE");
 }
@@ -196,22 +150,12 @@ void loop()
     case SOFT_AP:
       SoftAP_HandleWebClient();
       break;
-    case DISCONNECTED:
-      SoftAP_Setup();
-      break;
-    case RESETING:
-      Reset();
-      break;
   }
-  DoVerticalScrool(N_image, 24, 25);
+  //DoVerticalScrool(N_image, 24, 25);
+  ReadAndComputeData();
+  PrintDataOnScreen();
+  delay(1000);
 }
-
-#define NUMFLAKES 1
-#define XPOS 0
-#define YPOS 1
-#define DELTAY 2
-
-uint8_t icons[NUMFLAKES][3];
 
 void SetupVerticalScroll()
 {
@@ -230,44 +174,70 @@ void SetupVerticalScroll()
   }
 }
 
+void PrintDataOnScreen()
+{
+  // Température en Celcius - Temperature in Celcius
+  display.println("Temp:");
+  display.print(g_temperature, 1);
+  display.println(" C");
+
+  display.println("QNE:");
+  display.print(g_pressure / 100.0, 1);
+  display.println(" hpa");
+
+  Serial.print("Temperature = ");
+  Serial.print(g_temperature);
+  Serial.println(" *C");
+  
+  Serial.print("Pressure = ");
+  Serial.print(g_pressure / 100.0);
+  Serial.println(" hPa");
+  
+  display.display();
+}
+
+void ReadAndComputeData()
+{
+  if (! bmp.performReading())
+  {
+    Serial.println("Failed to perform reading :(");
+    return;
+  }
+  g_temperature = bmp.temperature;
+  g_pressure = bmp.pressure;
+  g_altitude = 
+
+  
+  // Efface l'écran et positionne le curseur dans le coin supérieur gauche - clear display and set cursor on the top left corner
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+}
+
 void DoVerticalScrool(const uint8_t *bitmap, uint8_t w, uint8_t h)
 {
   // draw each icon
-    for (uint8_t f=0; f< NUMFLAKES; f++) {
+    for (uint8_t f=0; f< NUMFLAKES; f++)
+    {
       display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, WHITE);
     }
     display.display();
     delay(200);
 
     // then erase it + move it
-    for (uint8_t f=0; f< NUMFLAKES; f++) {
+    for (uint8_t f=0; f< NUMFLAKES; f++)
+    {
       display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, BLACK);
       // move it
       icons[f][YPOS] += icons[f][DELTAY];
       // if its gone, reinit
-      if (icons[f][YPOS] > display.height()) {
+      if (icons[f][YPOS] > display.height())
+      {
         icons[f][XPOS] = random(display.width() - (w / 2));
         icons[f][YPOS] = 0;
         icons[f][DELTAY] = random(5) + 1;
       }
     }
-    if (! bmp.performReading()) {
-    Serial.println("Failed to perform reading :(");
-    return;
-  }
-  
-  Serial.print("Temperature = ");
-  Serial.print(bmp.temperature);
-  Serial.println(" *C");
-
-  Serial.print("Pressure = ");
-  Serial.print(bmp.pressure / 100.0);
-  Serial.println(" hPa");
-
-  Serial.print("Approx. Altitude = ");
-  Serial.print(bmp.readAltitude(SEALEVELPRESSURE_HPA));
-  Serial.println(" m");
-
-  Serial.println();
-  //delay(2000);
+    //delay(2000);
 }
