@@ -4,9 +4,10 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include "Adafruit_SSD1306.h" // this lib has been modified to support 64x48 display
 #include <Adafruit_Sensor.h>
-#include "Adafruit_BMP3XX.h"
+
+#include "Adafruit_SSD1306.h" // this lib has been modified to support 64x48 display
+#include <Adafruit_BMP3XX.h>
 
 #define NUMFLAKES 1
 #define XPOS 0
@@ -27,15 +28,20 @@ int8_t m_State = DISCONNECTED;
 WiFiServer m_WebServ(80);
 
 Adafruit_BMP3XX bmp;
-#define SEA_LEVEL_PRESSURE_HPA (1015.0f)
+#define SEA_LEVEL_PRESSURE_HPA (1011.0f)
 
 float g_temperature = 0.0f;
 float g_current_pressure = 0.0f;
-float g_altitude = 0.0f;
+float g_altitude_m = 0.0f;
+float g_altitude_ft = 0.0f;
 float g_pressure_reference = SEA_LEVEL_PRESSURE_HPA;
 
 #define FEET_IN_METER (0.3048f)
 #define FEET_BY_HPA (30)
+
+void SetupVerticalScroll();
+void ReadAndComputeData();
+void PrintDataOnScreen();
 
 void setup()
 {
@@ -177,6 +183,7 @@ void SetupVerticalScroll()
 
 void PrintDataOnScreen()
 {
+// DISPLAY PRINT
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -190,14 +197,27 @@ void PrintDataOnScreen()
   display.println(" hpa");
 
   display.println();
-  display.print(g_altitude);
-  display.println("m");
-
-  Serial.println("alt: ");
-  Serial.print(g_altitude);
-  Serial.print(" m");
+  display.print(g_altitude_m);
+  display.println(" m");
+  display.print(g_altitude_ft);
+  display.println(" ft");
 
   display.display();
+
+// SERIAL PRINT
+  Serial.println("Ref pressure ");
+  Serial.print(g_pressure_reference);
+  Serial.println("Read pressure ");
+  Serial.println(g_current_pressure);
+
+  Serial.println("");
+  Serial.print(g_altitude_m);
+  Serial.print(" m");
+
+  Serial.println("");
+  Serial.print(g_altitude_ft);
+  Serial.print(" ft");
+
 }
 
 void ReadAndComputeData()
@@ -209,11 +229,8 @@ void ReadAndComputeData()
   }
   g_temperature = bmp.temperature;
   g_current_pressure = bmp.pressure / 100.0, 1;
-  Serial.println();
-  Serial.println(g_pressure_reference);
-  Serial.println(g_current_pressure);
-  Serial.println();
-  g_altitude = (g_pressure_reference - g_current_pressure) * FEET_BY_HPA * FEET_IN_METER;
+  g_altitude_ft = (g_pressure_reference - g_current_pressure) * FEET_BY_HPA;
+  g_altitude_m = g_altitude_ft * FEET_IN_METER;
 }
 
 void DoVerticalScrool(const uint8_t *bitmap, uint8_t w, uint8_t h)
