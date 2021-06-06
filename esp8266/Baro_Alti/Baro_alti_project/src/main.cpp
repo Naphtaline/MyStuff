@@ -1,4 +1,4 @@
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <string.h>
 
 #include <SPI.h>
@@ -6,8 +6,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_Sensor.h>
 
-#include "Adafruit_SSD1306.h" // this lib has been modified to support 64x48 display
+#include <Adafruit_SSD1306.h> // this lib has been modified to support 64x48 display
 #include <Adafruit_BMP3XX.h>
+
+#define SSD1306_128_64
 
 #define NUMFLAKES 1
 #define XPOS 0
@@ -18,10 +20,6 @@ uint8_t icons[NUMFLAKES][3];
 
 #define OLED_RESET 0  // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
-
-#if (SSD1306_LCDHEIGHT != 48)
-#error("Height incorrect, please fix Adafruit_SSD1306.h!");
-#endif
 
 enum e_State { DISCONNECTED = -1, SOFT_AP = 0, RESETING};
 int8_t m_State = DISCONNECTED;
