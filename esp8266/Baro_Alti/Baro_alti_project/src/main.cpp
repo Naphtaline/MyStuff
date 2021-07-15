@@ -1,34 +1,19 @@
-#include <WiFi.h>
 #include <string.h>
 
 #include <SPI.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
 #include <Adafruit_Sensor.h>
-
-#include <Adafruit_SSD1306.h> // this lib has been modified to support 64x48 display
 #include <Adafruit_BMP3XX.h>
+#include <U8g2lib.h>                           // see https://github.com/olikraus/u8g2/wiki/u8g2reference
 
-#define SSD1306_128_64
 
-#define NUMFLAKES 1
-#define XPOS 0
-#define YPOS 1
-#define DELTAY 2
-
-uint8_t icons[NUMFLAKES][3];
-
-#define OLED_RESET 0  // GPIO0
-Adafruit_SSD1306 display(OLED_RESET);
-
-enum e_State { DISCONNECTED = -1, SOFT_AP = 0, RESETING};
-int8_t m_State = DISCONNECTED;
-WiFiServer m_WebServ(80);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C       u8g2(U8G2_R0, 16, 15, 4);         // OLED graphics
 
 Adafruit_BMP3XX bmp;
-#define SEA_LEVEL_PRESSURE_HPA (1011.0f)
+#define SEA_LEVEL_PRESSURE_HPA (1023.0f)
 
 float g_temperature = 0.0f;
+char g_temperature_str[7];
 float g_current_pressure = 0.0f;
 float g_altitude_m = 0.0f;
 float g_altitude_ft = 0.0f;
@@ -37,19 +22,35 @@ float g_pressure_reference = SEA_LEVEL_PRESSURE_HPA;
 #define FEET_IN_METER (0.3048f)
 #define FEET_BY_HPA (30)
 
-void SetupVerticalScroll();
-void ReadAndComputeData();
+bool ReadAndComputeData();
 void PrintDataOnScreen();
+void printStrDisplay(char *str, int line_number);
 
 void setup()
 {
   Serial.begin(115200);
+  char lineBuffer[128];
+
+  //Serial.print("CPU Freq: ");
+  //Serial.println(getCpuFrequencyMhz()); => default value 240Mhz
+
+  // So we slow down the CPU because we don't need that much power, and the consumption is now  2x less than standard.
+  setCpuFrequencyMhz(80);
+
+  // consumption for : 240Mhz => 66.8mA
+  // consumption for : 160Mhz => 45.9mA
+  // consumption for : 80Mhz  => 33.2mA
+  // consumption for : 40Mhz  => 19.88mA
+  // consumption for : 20Mhz  => 15.43mA
+  // consumption for : 10Mhz  => 13.19mA
 
   while (!Serial);
   Serial.println("Adafruit BMP388 / BMP390 test");
   Serial.println("Starting up");
 
-  if (!bmp.begin_I2C())
+  TwoWire *l_wireBMP = new TwoWire(1);
+  l_wireBMP->begin(13,12);
+  if (!bmp.begin_I2C((uint8_t)0x77, l_wireBMP))
   {   // hardware I2C mode, can pass in address & alt Wire
     Serial.println("Could not find a valid BMP3 sensor, check wiring!");
     while (1);
@@ -61,151 +62,79 @@ void setup()
   bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
   bmp.setOutputDataRate(BMP3_ODR_50_HZ);
 
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
-  display.display();
-  display.clearDisplay();
-  SetupVerticalScroll();
-}
+  // OLED graphics.
+  Serial.println("Call u8g2.begin");
+  u8g2.begin();
 
-void StartWebServer()
-{
-  m_WebServ.begin();
-}
+  u8g2.setFont(u8g2_font_ncenB18_tf);
+  u8g2.setFontRefHeightExtendedText();
+  u8g2.setDrawColor(1);
+  u8g2.setFontPosTop();
+  u8g2.setFontDirection(0);
 
-void SoftAP_Setup()
-{
-  Serial.println();
-  Serial.print("Setting soft-AP ... \n");
+  // Display the title
+  u8g2.clearBuffer();
+  sprintf(lineBuffer, "%s", "Napht");
+  u8g2.drawStr(64 - (u8g2.getStrWidth(lineBuffer) / 2), 10, lineBuffer);
+  u8g2.setFont(u8g2_font_ncenR10_tf);
+  sprintf(lineBuffer, "%s", "altimeter");
+  u8g2.drawStr(64 - (u8g2.getStrWidth(lineBuffer) / 2), 35, lineBuffer);
+  u8g2.sendBuffer();
   
-  IPAddress ip(192, 168, 1, 35);
-  IPAddress gateway(192, 168, 1, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  WiFi.softAPConfig(ip, gateway, subnet);
-  boolean l_Result = WiFi.softAP("ESPsoftAP_01", "toto12345");
+  // we need to init the barometer
+  ReadAndComputeData();
+  delay(500);
+  ReadAndComputeData();
+  delay(500);
+  ReadAndComputeData();
+  delay(500);
 
-  if (l_Result)
-  {
-    Serial.println("Soft_AP Ready");
-    Serial.print("IP: ");
-    Serial.println(WiFi.softAPIP());
+  // then we assign the reference value
+  g_pressure_reference = g_current_pressure;
 
-    m_State = SOFT_AP;
-    StartWebServer();
-  }
-  else
-  {
-    Serial.println("Soft_AP Failed!");
-    m_State = DISCONNECTED;
-  }
+  delay(1500);
 }
-
-void SoftAP_ServePage(WiFiClient p_Client)
-{
-  char final_array[120];
-  memset(final_array, 0, 120);
-
-  String final_string = "<!DOCTYPE html><html><body><h2>Data sensor values</h2><h3>Temp : ";
-  String temp = String(13);
-  String middle = "</h3><h3>Altitude : ";
-  String prssure = String(1005);
-  String middle2 = "</h3><h3>Altitude : ";
-
-  final_string = final_string + temp + middle + prssure + middle2;
-  if (final_string.length() <= 120)
-    final_string.toCharArray(final_array, final_string.length());
-
-  p_Client.print(final_array);
-}
-
-void SoftAP_HandleWebClient()
-{
-  WiFiClient l_Client = m_WebServ.available();
-
-  if (!l_Client)
-    return;
-  SoftAP_ServePage(l_Client);
-
-  // request look like : "GET /?ssid=qwerty&password=12345 HTTP/1.1"
-  String l_Request = l_Client.readStringUntil('\r');
-  
-  char *l_ReqCopy = (char*)malloc(l_Request.length());
-  for (int i = 0; i < l_Request.length(); i++)
-    l_ReqCopy[i] = l_Request.c_str()[i];
-
-  Serial.print("Request====>");
-  Serial.println(l_ReqCopy);
-
-  l_Client.flush();
-}
-
 
 void Reset()
 {
   Serial.println("RESETING");
-  m_WebServ.stop();
-  WiFi.disconnect(true);
-  m_State = DISCONNECTED;
-  Serial.println("DISCONNECTED FROM EVERYWHERE");
 }
-
+int count = 0;
 void loop()
 {
-  switch (m_State)
-  {
-    case SOFT_AP:
-      SoftAP_HandleWebClient();
-      break;
-  }
+  Serial.println("BEGIN LOOP");
 
-  ReadAndComputeData();
-  PrintDataOnScreen();
-  delay(1000);
-}
+  if (ReadAndComputeData())
+    PrintDataOnScreen();
 
-void SetupVerticalScroll()
-{
-  // initialize
-  for (uint8_t f=0; f< NUMFLAKES; f++) {
-    icons[f][XPOS] = random(display.width());
-    icons[f][YPOS] = 0;
-    icons[f][DELTAY] = random(5) + 1;
-
-    Serial.print("x: ");
-    Serial.print(icons[f][XPOS], DEC);
-    Serial.print(" y: ");
-    Serial.print(icons[f][YPOS], DEC);
-    Serial.print(" dy: ");
-    Serial.println(icons[f][DELTAY], DEC);
-  }
+  Serial.println("END\n");
+  delay(250);
 }
 
 void PrintDataOnScreen()
 {
 // DISPLAY PRINT
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
+  char lineBuffer[128];
+  
+  u8g2.clearBuffer();
 
-  display.print(g_temperature, 1);
-  display.println(" C");
+  u8g2.setFont(u8g2_font_lubB18_tf );
+  sprintf(lineBuffer, "%d ft", (int)g_altitude_ft);
+  u8g2.drawStr(0, 0, lineBuffer);
 
-  display.println();
-  display.print(g_current_pressure, 1);
-  display.println(" hpa");
+  u8g2.setFont(u8g2_font_lubR10_tf);
+  sprintf(lineBuffer, "%d m", (int)g_altitude_m);
+  u8g2.drawStr(0, 20, lineBuffer);
+  sprintf(lineBuffer, "%s C", g_temperature_str);
+  u8g2.drawStr(128 - u8g2.getStrWidth(lineBuffer), 52, lineBuffer);
+  
+  u8g2.sendBuffer();
 
-  display.println();
-  display.print(g_altitude_m);
-  display.println(" m");
-  display.print(g_altitude_ft);
-  display.println(" ft");
-
-  display.display();
 
 // SERIAL PRINT
-  Serial.println("Ref pressure ");
-  Serial.print(g_pressure_reference);
-  Serial.println("Read pressure ");
+  Serial.print("Ref pressure ");
+  Serial.println(g_pressure_reference);
+  Serial.print("Read pressure ");
   Serial.println(g_current_pressure);
 
   Serial.println("");
@@ -214,46 +143,24 @@ void PrintDataOnScreen()
 
   Serial.println("");
   Serial.print(g_altitude_ft);
-  Serial.print(" ft");
+  Serial.println(" ft");
 
 }
 
-void ReadAndComputeData()
+bool ReadAndComputeData()
 {
   if (! bmp.performReading())
   {
     Serial.println("Failed to perform reading :(");
-    return;
+    return false;
   }
-  g_temperature = bmp.temperature;
-  g_current_pressure = bmp.pressure / 100.0, 1;
+
+  g_temperature = floorf((bmp.temperature - 2.0f) * 10) / 10;
+
+  dtostrf(g_temperature, 2, 2, g_temperature_str);
+
+  g_current_pressure = bmp.pressure / 100.0f;
   g_altitude_ft = (g_pressure_reference - g_current_pressure) * FEET_BY_HPA;
   g_altitude_m = g_altitude_ft * FEET_IN_METER;
-}
-
-void DoVerticalScrool(const uint8_t *bitmap, uint8_t w, uint8_t h)
-{
-  // draw each icon
-    for (uint8_t f=0; f< NUMFLAKES; f++)
-    {
-      display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, WHITE);
-    }
-    display.display();
-    delay(200);
-
-    // then erase it + move it
-    for (uint8_t f=0; f< NUMFLAKES; f++)
-    {
-      display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, BLACK);
-      // move it
-      icons[f][YPOS] += icons[f][DELTAY];
-      // if its gone, reinit
-      if (icons[f][YPOS] > display.height())
-      {
-        icons[f][XPOS] = random(display.width() - (w / 2));
-        icons[f][YPOS] = 0;
-        icons[f][DELTAY] = random(5) + 1;
-      }
-    }
-    //delay(2000);
+  return true;
 }
