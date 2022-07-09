@@ -5,26 +5,43 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP3XX.h>
 #include <U8g2lib.h>                           // see https://github.com/olikraus/u8g2/wiki/u8g2reference
+#include <heltec.h>
+#include <Arduino.h>
 
 
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C       u8g2(U8G2_R0, 16, 15, 4);         // OLED graphics
+////U8G2 area
+/**/ U8G2_SSD1306_128X64_NONAME_F_HW_I2C       u8g2(U8G2_R0, 16, 15, 4);         // OLED graphics
+/**/
+/**/ void PrintDataOnScreen();
+/**/ void PrintBattLevelOnScreen();
+////end U8G2 area
 
-Adafruit_BMP3XX bmp;
-#define SEA_LEVEL_PRESSURE_HPA (1023.0f)
 
-float g_temperature = 0.0f;
-char g_temperature_str[7];
-float g_current_pressure = 0.0f;
-float g_altitude_m = 0.0f;
-float g_altitude_ft = 0.0f;
-float g_pressure_reference = SEA_LEVEL_PRESSURE_HPA;
+////BMP area
+/**/ Adafruit_BMP3XX bmp;
+/**/ #define SEA_LEVEL_PRESSURE_HPA (1023.0f)
+/**/
+/**/ float g_temperature = 0.0f;
+/**/ char g_temperature_str[7];
+/**/ float g_current_pressure = 0.0f;
+/**/ float g_altitude_m = 0.0f;
+/**/ float g_altitude_ft = 0.0f;
+/**/ float g_pressure_reference = SEA_LEVEL_PRESSURE_HPA;
+/**/
+/**/ #define FEET_IN_METER (0.3048f)
+/**/ #define FEET_BY_HPA (30)
+/**/
+/**/bool ReadAndComputeData();
+////end BMP area
 
-#define FEET_IN_METER (0.3048f)
-#define FEET_BY_HPA (30)
+////Battery area
+/**/ //int g_batt_voltage_Pin = A4;  // Wifi Kit 32 shows analog value of voltage in A4
+/**/ int g_batt_analog_val = 0;    // variable to store the value read
+/**/ int g_batt_percentage = 0;
+/**/
+/**/ void ReadAndComputeBattLevel();
+////end Battery are
 
-bool ReadAndComputeData();
-void PrintDataOnScreen();
-void printStrDisplay(char *str, int line_number);
 
 void setup()
 {
@@ -93,22 +110,41 @@ void setup()
   g_pressure_reference = g_current_pressure;
 
   delay(1500);
+
+  //analogSetCycles(8);
+  //analogSetSamples(1);
+  //analogSetClockDiv(1);
+  analogSetPinAttenuation(37,ADC_11db);
+  //adcAttachPin(37);
 }
 
 void Reset()
 {
   Serial.println("RESETING");
 }
-int count = 0;
+
+int timer = 0;
+
 void loop()
 {
   Serial.println("BEGIN LOOP");
 
-  if (ReadAndComputeData())
-    PrintDataOnScreen();
+  ReadAndComputeData();
+  
+  if (timer % 1000 == 0)
+  {
+    ReadAndComputeBattLevel(); // this take 200ms
+    timer = 0;
+    delay(50);
+  }
+  else
+    delay(250);
+
+  timer += 250;
+
+  PrintDataOnScreen();
 
   Serial.println("END\n");
-  delay(250);
 }
 
 void PrintDataOnScreen()
@@ -125,9 +161,17 @@ void PrintDataOnScreen()
   u8g2.setFont(u8g2_font_lubR10_tf);
   sprintf(lineBuffer, "%d m", (int)g_altitude_m);
   u8g2.drawStr(0, 20, lineBuffer);
+
   sprintf(lineBuffer, "%s C", g_temperature_str);
   u8g2.drawStr(128 - u8g2.getStrWidth(lineBuffer), 52, lineBuffer);
   
+  sprintf(lineBuffer, "%d", g_batt_analog_val);
+  u8g2.drawStr(128 - u8g2.getStrWidth(lineBuffer), 0, lineBuffer);
+  
+  sprintf(lineBuffer, "%d\%", g_batt_percentage);
+  u8g2.drawStr(128 - u8g2.getStrWidth(lineBuffer), 20, lineBuffer);
+
+
   u8g2.sendBuffer();
 
 
@@ -163,4 +207,20 @@ bool ReadAndComputeData()
   g_altitude_ft = (g_pressure_reference - g_current_pressure) * FEET_BY_HPA;
   g_altitude_m = g_altitude_ft * FEET_IN_METER;
   return true;
+}
+
+void ReadAndComputeBattLevel()
+{
+  int average_value = 0;
+  for (int i = 0; i < 20; i++)
+  {
+    //Serial.printf("Battery power in GPIO 37: ");
+    //Serial.println(analogRead(37));
+    average_value += analogRead(37);
+    delay(10);
+  }
+  g_batt_analog_val = average_value /20;
+  g_batt_percentage = (g_batt_analog_val - 2064) / 2.78;
+  Serial.println("Vbat : " + (String)average_value);
+
 }
